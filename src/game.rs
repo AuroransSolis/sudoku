@@ -52,6 +52,7 @@ impl Game {
     pub fn new(numbers: [[u8; 9]; 9]) -> Self {
         let mut board = [[None; 9]; 9];
         let mut possibilities = [[[true; 9]; 9]; 9];
+        // Arrays of markers for whether each group has a cell value yet
         let mut rows = [[false; 9]; 9];
         let mut cols = [[false; 9]; 9];
         let mut sqrs = [[false; 9]; 9];
@@ -373,12 +374,8 @@ impl Game {
                             if cols[x][i] {
                                 println!("conflict: col {} has multiple {}s", x, i + 1);
                             }
-                            if sqrs[sqrs_x + sqrs_y][i] {
-                                println!(
-                                    "conflict: sqr {} has multiple {}s",
-                                    sqrs_x + sqrs_y,
-                                    i + 1
-                                );
+                            if sqrs[s][i] {
+                                println!("conflict: sqr {} has multiple {}s", s, i + 1);
                             }
                         }
                         return false;
