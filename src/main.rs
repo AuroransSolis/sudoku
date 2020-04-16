@@ -1,6 +1,7 @@
 mod game;
 
 use game::Game;
+use std::time::Instant;
 
 fn main() {
     let mut easy = Game::new([
@@ -14,10 +15,6 @@ fn main() {
         [6, 0, 8, 0, 0, 0, 0, 0, 0],
         [1, 0, 0, 2, 0, 0, 7, 0, 8],
     ]);
-    println!("easy example:");
-    println!("{}", easy);
-    easy.solve();
-    println!("{}", easy);
     let mut medium = Game::new([
         [0, 0, 6, 0, 9, 0, 2, 0, 0],
         [0, 0, 0, 7, 0, 2, 0, 0, 0],
@@ -29,10 +26,6 @@ fn main() {
         [0, 0, 0, 2, 0, 1, 0, 0, 0],
         [0, 0, 9, 0, 8, 0, 1, 0, 0],
     ]);
-    println!("medium example:");
-    println!("{}", medium);
-    medium.solve();
-    println!("{}", medium);
     let mut hard = Game::new([
         [0, 0, 0, 8, 0, 0, 0, 0, 0],
         [7, 8, 9, 0, 1, 0, 0, 0, 6],
@@ -44,8 +37,22 @@ fn main() {
         [8, 0, 0, 0, 7, 0, 4, 3, 9],
         [0, 0, 0, 0, 0, 1, 0, 0, 0],
     ]);
-    println!("hard example:");
-    println!("{}", hard);
+    let euss = format!("{}", easy);
+    let muss = format!("{}", medium);
+    let huss = format!("{}", hard);
+    let start = Instant::now();
+    easy.solve();
+    medium.solve();
     hard.solve();
-    println!("{}", hard);
+    let elapsed = start.elapsed();
+    let ess = format!("{}", easy);
+    let mss = format!("{}", medium);
+    let hss = format!("{}", hard);
+    for ((euss_line, muss_line), huss_line) in euss.lines().zip(muss.lines()).zip(huss.lines()) {
+        println!("{}    {}    {}", euss_line, muss_line, huss_line);
+    }
+    for ((ess_line, mss_line), hss_line) in ess.lines().zip(mss.lines()).zip(hss.lines()) {
+        println!("{}    {}    {}", ess_line, mss_line, hss_line);
+    }
+    println!("solve time for all: {:?}", elapsed);
 }
