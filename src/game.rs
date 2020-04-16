@@ -191,7 +191,8 @@ impl Game {
                 }
             }
         }
-        // Set the new
+        // Set the new possibilities for the affected column (less the removed cell, which was fixed
+        // by the previous loop)
         for (y, r) in rows.iter().enumerate().filter(|&(y, _)| y != row) {
             if self.board[y][col].is_none() {
                 let s = 3 * (y / 3) + col / 3;
@@ -200,6 +201,8 @@ impl Game {
                 }
             }
         }
+        // There should be four more cells in the 3x3 group not fixed by the previous two loops.
+        // Iterate over them and fix their possibilities.
         let rs = 3 * (row / 3);
         let cs = 3 * (col / 3);
         for y in (rs..rs + 3).filter(|&y| y != row) {
@@ -215,26 +218,33 @@ impl Game {
     }
 
     fn propagate_poss_to_board(&mut self) -> bool {
+        // Only try to make changes if the game isn't already solved
         if !self.solved() {
             let mut made_change = false;
             for y in 0..9 {
                 'x: for x in 0..9 {
-                    if self.board[y][x].is_some() {
-                        continue;
-                    }
-                    let mut n = 0;
-                    for i in 0..9 {
-                        if self.possibilities[y][x][i] {
-                            if n > 0 {
-                                continue 'x;
-                            } else {
-                                n = i + 1;
+                    // Only check possibilities if the board has no value in a cell
+                    if self.board[y][x].is_none() {
+                        // We set `n` to an invalid cell value to start with. If we encounter a
+                        // value that the cell could be, we set n to that value. But if we encounter
+                        // a second value that the cell could be, then we can't propagate the
+                        // possibility outwards into a definite value. So if that happens, move on
+                        // to the next cell. Otherwise, set this cell's value to the only possible
+                        // one.
+                        let mut n = 0;
+                        for i in 0..9 {
+                            if self.possibilities[y][x][i] {
+                                if n > 0 {
+                                    continue 'x;
+                                } else {
+                                    n = i + 1;
+                                }
                             }
                         }
-                    }
-                    if n > 0 {
-                        self.set_cell(y, x, CellValue::new(n as u8).unwrap());
-                        made_change = true;
+                        if n > 0 {
+                            self.set_cell(y, x, CellValue::new(n as u8).unwrap());
+                            made_change = true;
+                        }
                     }
                 }
             }
@@ -248,42 +258,55 @@ impl Game {
         if self.solved() {
             return;
         }
+        // Solve as much of the puzzle as is possible without any sort of foresight - just cancel
+        // out possible values and put in values for cells with only one possible value for as long
+        // as possible.
         let mut propagated = self.propagate_poss_to_board();
         while propagated {
             propagated = self.propagate_poss_to_board();
         }
+        // If this solves the puzzle, hooray! Easy win, just return.
         if self.solved() {
             return;
         }
+        // Each level of recursion represents a single move. So the maximum level of recursion is
+        // the number of moves left to make. It shouldn't be possible to go over this cap, but this
+        // is here as a precaution to keep the program from overrunning the stack.
         let depth_cap = 81
             - self
                 .board
                 .iter()
                 .map(|row| row.iter().filter(|cv| cv.is_some()).count())
                 .sum::<usize>();
+        // Get the coordinates and possibilities for the first cell with more than one possible
+        // value.
         let (y, x, poss) = self
             .iter()
             .find(|&(_, _, cell, _)| cell.is_none())
             .map(|(y, x, _, &poss)| (y, x, poss))
             .unwrap();
+        // Iterate over the possible values the cell can be.
         for cv in poss
             .iter()
             .enumerate()
             .filter(|&(_, &p)| p)
             .map(|(i, _)| CellValue::new(i as u8 + 1).unwrap())
         {
+            // Set the cell to the possible value
             self.set_cell(y, x, cv);
-            let mut propagated = self.propagate_poss_to_board();
-            while propagated {
-                propagated = self.propagate_poss_to_board();
-            }
+            // Make sure that this change is valid (especially that it leaves possibilities).
             if !self.is_valid(false) {
                 self.unset_cell(y, x);
                 continue;
             }
+            // If that move solved the game, return.
             if self.solved() {
                 return;
             }
+            // If it didn't, this becomes the base of a recursive walk over the possible moves for
+            // the game with that as the starting point. If this tree produces a solved game (the
+            // recursive call returns `true`), then return. Otherwise, undo the move and try the
+            // next one.
             if self.solve_recursive(1, depth_cap) {
                 return;
             } else {
@@ -298,14 +321,19 @@ impl Game {
             println!("hit depth cap, climbing back up.");
             return false;
         }
-        let find = self
+        // Get the coordinates and possibilities for the first cell with more than one possible
+        // value. The `unwrap` is safe here since this method never gets called if there are no
+        // empty cells left.
+        let (y, x, poss) = self
             .iter()
             .find(|&(_, _, cell, _)| cell.is_none())
-            .map(|(y, x, _, &poss)| (y, x, poss));
-        let (y, x, poss) = match find {
-            Some(details) => details,
-            None => return false,
-        };
+            .map(|(y, x, _, &poss)| (y, x, poss))
+            .unwrap();
+        // Iterate over the possible values the cell can be and branch to all the possible moves
+        // after this one. If a move solves the game or if a branch returns true, return `true`
+        // immediately to walk back up the stack to the base of the tree and return. If a branch
+        // returns false, try the next one. If all branches are exhausted and no solution has been
+        // found, then this is a bad branch so return `false`.
         for cv in poss
             .iter()
             .enumerate()
@@ -330,6 +358,7 @@ impl Game {
     }
 
     fn solved(&self) -> bool {
+        // Keep flags for whether each row, column, or 3x3 has a certain cell value.
         let mut rows = [[false; 9]; 9];
         let mut cols = [[false; 9]; 9];
         let mut sqrs = [[false; 9]; 9];
@@ -354,6 +383,7 @@ impl Game {
     }
 
     fn is_valid(&self, verbose: bool) -> bool {
+        // Make sure there aren't any unset cells with no possible values
         if let Some((y, x, _, _)) = self
             .iter()
             .find(|&(_, _, cell, poss)| cell.is_none() && !poss.contains(&true))
@@ -363,6 +393,7 @@ impl Game {
             }
             false
         } else {
+            // Otherwise, check to make sure there are no conflicts in rows, columns, or 3x3s.
             let mut rows = [[false; 9]; 9];
             let mut cols = [[false; 9]; 9];
             let mut sqrs = [[false; 9]; 9];
