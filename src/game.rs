@@ -75,12 +75,12 @@ impl Game {
         }
         // Update possibility arrays for unset cells, which is equivalent to updating possibility
         // arrays that have everything marked as possible.
-        for y in 0..9 {
-            for x in 0..9 {
+        for (y, row) in rows.iter().enumerate() {
+            for (x, col) in cols.iter().enumerate() {
                 if board[y][x].is_none() {
                     for i in 0..9 {
                         let s = 3 * (y / 3) + x / 3;
-                        possibilities[y][x][i] = !(rows[y][i] || cols[x][i] || sqrs[s][i]);
+                        possibilities[y][x][i] = !(row[i] || col[i] || sqrs[s][i]);
                     }
                 }
             }
@@ -166,6 +166,8 @@ impl Game {
 
     fn unset_cell(&mut self, row: usize, col: usize) {
         self.board[row][col] = None;
+        // Grab what's present for each group - all of these are referenced when setting the new
+        // possibilities for the cells affected by the removal
         let mut rows = [[false; 9]; 9];
         let mut cols = [[false; 9]; 9];
         let mut sqrs = [[false; 9]; 9];
@@ -180,19 +182,21 @@ impl Game {
                 }
             }
         }
-        for x in 0..9 {
+        // Set the new possibilities for the affected row
+        for (x, c) in cols.iter().enumerate() {
             if self.board[row][x].is_none() {
                 let s = 3 * (row / 3) + x / 3;
-                for i in 0..9 {
-                    self.possibilities[row][x][i] = !(rows[row][i] || cols[x][i] || sqrs[s][i]);
+                for (i, &c) in c.iter().enumerate() {
+                    self.possibilities[row][x][i] = !(rows[row][i] || c || sqrs[s][i]);
                 }
             }
         }
-        for y in (0..9).filter(|&y| y != row) {
+        // Set the new
+        for (y, r) in rows.iter().enumerate().filter(|&(y, _)| y != row) {
             if self.board[y][col].is_none() {
                 let s = 3 * (y / 3) + col / 3;
-                for i in 0..9 {
-                    self.possibilities[y][col][i] = !(rows[y][i] || cols[col][i] || sqrs[s][i]);
+                for (i, &r) in r.iter().enumerate() {
+                    self.possibilities[y][col][i] = !(r || cols[col][i] || sqrs[s][i]);
                 }
             }
         }
