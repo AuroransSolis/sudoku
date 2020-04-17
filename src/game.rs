@@ -220,14 +220,9 @@ impl Game {
             for cv in 0..9 {
                 if self.rows_flags.iter().filter(|b| b[cv]).count() == 8 {
                     let r = self.rows_flags.iter().position(|b| !b[cv]).expect("rfr");
-                    // println!("PPTB | R | Row {} only one without {} set", r, cv + 1);
                     let c = self.iter_row_poss(r).position(|(_, cell)| cell[cv]);
                     if let Some(c) = c {
-                        // println!("PPTB | R | Cell ({}, {}) determined to be cell to set to {}", r, c, cv + 1);
-                        // println!("PPTB | R | Setting ({}, {}) to {:?}", c, r, CellValue::new(cv as u8 + 1).expect("rfcv"));
                         self.set_cell(r, c, CellValue::new(cv as u8 + 1).expect("rfcv"));
-                        // println!("PPTB | R | New board state:");
-                        // println!("{}", self);
                         made_change = true;
                     }
                 }
@@ -235,19 +230,14 @@ impl Game {
                     let c = self.cols_flags.iter().position(|b| !b[cv]).expect("cfc");
                     let r = self.iter_col_poss(c).position(|(_, cell)| cell[cv]);
                     if let Some(r) = r {
-                        // println!("PPTB | C | Setting ({}, {}) to {:?}", c, r, CellValue::new(cv as u8 + 1).expect("cfcv"));
                         self.set_cell(r, c, CellValue::new(cv as u8 + 1).expect("cfcv"));
-                        // println!("PPTB | C | New board state:");
-                        // println!("{}", self);
                         made_change = true;
                     }
                 }
                 if self.sqrs_flags.iter().filter(|b| b[cv]).count() == 8 {
                     let s = self.sqrs_flags.iter().position(|b| !b[cv]).expect("sfs");
-                    // println!("PPTB | S | 3x3 {} only one without {} set", s, cv + 1);
                     let rs = 3 * (s / 3);
                     let cs = 3 * (s % 3);
-                    // println!("PPTB | S | Finding cell to set in 3x3 w/ TL ({}, {})", cs, rs);
                     let p = self
                         .iter_3x3_poss(rs, cs)
                         .position(|(_, _, cell)| cell[cv]);
@@ -256,7 +246,6 @@ impl Game {
                         let co = p % 3;
                         let r = rs + ro;
                         let c = cs + co;
-                        // println!("PPTB | S | Setting ({}, {}) to {:?}", c, r, CellValue::new(cv as u8 + 1).expect("sfcv"));
                         self.set_cell(r, c, CellValue::new(cv as u8 + 1).expect("sfcv"));
                         made_change = true;
                     }
@@ -268,10 +257,7 @@ impl Game {
                     if self.board[y][x].is_none() {
                         if self.cell_poss[y][x].iter().copied().filter(|&b| b).count() == 1 {
                             let cv = self.cell_poss[y][x].iter().position(|&b| b).unwrap();
-                            // println!("PPTB | X | Setting ({}, {}) to {:?}", x, y, CellValue::new(cv as u8 + 1).expect("xcv"));
                             self.set_cell(y, x, CellValue::new(cv as u8 + 1).expect("xcv"));
-                            // println!("PPTB | X | New board state:");
-                            // println!("{}", self);
                             made_change = true;
                         }
                     }
@@ -287,7 +273,6 @@ impl Game {
         if self.solved() {
             return;
         }
-        // println!("starting propagation");
         // Solve as much of the puzzle as is possible without any sort of foresight - just cancel
         // out possible values and put in values for cells with only one possible value for as long
         // as possible.
@@ -295,7 +280,6 @@ impl Game {
             if !self.propagate_poss_to_board() {
                 break;
             }
-            // println!("SOLV | Did propagation pass");
         }
         // If this solves the puzzle, hooray! Easy win, just return.
         if self.solved() {
@@ -327,10 +311,8 @@ impl Game {
             let mut new = *self;
             // Set the cell to the possible value
             new.set_cell(y, x, cv);
-            // println!("SOLV | Making starting guess: set ({}, {}) to {:?}", x, y, cv);
             // Make sure that this change is valid (especially that it leaves possibilities).
             if !new.is_valid(false) {
-                // println!("SOLV | Move caused invalid gamestate - undoing");
                 new.unset_cell(y, x);
                 continue;
             }
@@ -339,7 +321,6 @@ impl Game {
                 *self = new;
                 return;
             }
-            // println!("SOLV | Recursing");
             // If it didn't, this becomes the base of a recursive walk over the possible moves for
             // the game with that as the starting point. If this tree produces a solved game (the
             // recursive call returns `true`), then return. Otherwise, undo the move and try the
@@ -347,8 +328,6 @@ impl Game {
             if new.solve_recursive(1, depth_cap) {
                 *self = new;
                 return;
-            } else {
-                // println!("SOLV | Branch failed, try next one");
             }
         }
         panic!("Found no unique solution to game.");
@@ -356,10 +335,8 @@ impl Game {
 
     fn solve_recursive(&mut self, depth: usize, max_depth: usize) -> bool {
         if depth > max_depth {
-            // println!("hit depth cap, climbing back up.");
             return false;
         }
-        // println!("starting propagation");
         // Solve as much of the puzzle as is possible without any sort of foresight - just cancel
         // out possible values and put in values for cells with only one possible value for as long
         // as possible.
@@ -367,7 +344,6 @@ impl Game {
             if !self.propagate_poss_to_board() {
                 break;
             }
-            // println!("SOLV | Did propagation pass");
         }
         // If this solves the puzzle, hooray! Easy win, just return.
         if self.solved() {
@@ -394,7 +370,6 @@ impl Game {
         {
             let mut new = *self;
             new.set_cell(y, x, cv);
-            // println!("SLRC({}) | Making starting guess: set ({}, {}) to {:?}", depth, x, y, cv);
             if !new.is_valid(false) {
                 new.unset_cell(y, x);
                 continue;
@@ -402,12 +377,10 @@ impl Game {
             if new.solved() {
                 return true;
             }
-            // println!("SLRC({}) | Recursing", depth);
             if new.solve_recursive(depth + 1, max_depth) {
                 *self = new;
                 return true;
             } else {
-                // println!("SLRC({}) | Branch failed, try next one", depth);
             }
         }
         false
