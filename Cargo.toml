@@ -7,3 +7,29 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+[dev-dependencies]
+criterion = "0.3.1"
+
+[[bench]]
+name = "sudoku_bench"
+harness = false
+path = "src/bench.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+incremental = false
+overflow-checks = false
+
+[profile.bench]
+opt-level = 3
+debug = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+incremental = false
+overflow-checks = false
