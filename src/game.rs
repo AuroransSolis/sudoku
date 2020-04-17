@@ -45,49 +45,55 @@ impl From<CellValue> for usize {
 // Each board is an array of rows (reverse coordinates, (y, x))
 pub struct Game {
     board: [[Option<CellValue>; 9]; 9],
-    possibilities: [[[bool; 9]; 9]; 9],
+    cell_poss: [[[bool; 9]; 9]; 9],
+    pub cols_flags: [[bool; 9]; 9],
+    pub rows_flags: [[bool; 9]; 9],
+    pub sqrs_flags: [[bool; 9]; 9],
 }
 
 impl Game {
     pub fn new(numbers: [[u8; 9]; 9]) -> Self {
         let mut board = [[None; 9]; 9];
-        let mut possibilities = [[[true; 9]; 9]; 9];
+        let mut cell_poss = [[[true; 9]; 9]; 9];
         // Arrays of markers for whether each group has a cell value yet
-        let mut rows = [[false; 9]; 9];
-        let mut cols = [[false; 9]; 9];
-        let mut sqrs = [[false; 9]; 9];
-        for (y, row) in rows.iter_mut().enumerate() {
-            for (x, col) in cols.iter_mut().enumerate() {
+        let mut rows_flags = [[false; 9]; 9];
+        let mut cols_flags = [[false; 9]; 9];
+        let mut sqrs_flags = [[false; 9]; 9];
+        for (y, row) in rows_flags.iter_mut().enumerate() {
+            for (x, col) in cols_flags.iter_mut().enumerate() {
                 let n = numbers[y][x];
                 assert!(n < 10);
                 if let Some(cv) = CellValue::new(n) {
                     // Mark everything but the stored value impossible
                     for i in (0..9).filter(|&i| i != n as usize - 1) {
-                        possibilities[y][x][i] = false;
+                        cell_poss[y][x][i] = false;
                     }
                     board[y][x] = Some(cv);
                     let s = 3 * (y / 3) + x / 3;
                     row[n as usize - 1] = true;
                     col[n as usize - 1] = true;
-                    sqrs[s][n as usize - 1] = true;
+                    sqrs_flags[s][n as usize - 1] = true;
                 }
             }
         }
         // Update possibility arrays for unset cells, which is equivalent to updating possibility
         // arrays that have everything marked as possible.
-        for (y, row) in rows.iter().enumerate() {
-            for (x, col) in cols.iter().enumerate() {
+        for (y, row) in rows_flags.iter().enumerate() {
+            for (x, col) in cols_flags.iter().enumerate() {
                 if board[y][x].is_none() {
                     for i in 0..9 {
                         let s = 3 * (y / 3) + x / 3;
-                        possibilities[y][x][i] = !(row[i] || col[i] || sqrs[s][i]);
+                        cell_poss[y][x][i] = !(row[i] || col[i] || sqrs_flags[s][i]);
                     }
                 }
             }
         }
         let new = Game {
             board,
-            possibilities,
+            cell_poss,
+            cols_flags,
+            rows_flags,
+            sqrs_flags,
         };
         assert!(new.is_valid(true));
         new
@@ -96,7 +102,7 @@ impl Game {
     fn iter(&self) -> impl Iterator<Item = (usize, usize, &Option<CellValue>, &[bool; 9])> + '_ {
         (0..9)
             .flat_map(|y| (0..9).map(move |x| (y, x)))
-            .map(move |(y, x)| (y, x, &self.board[y][x], &self.possibilities[y][x]))
+            .map(move |(y, x)| (y, x, &self.board[y][x], &self.cell_poss[y][x]))
     }
 
     fn iter_cells(&self) -> impl Iterator<Item = (usize, usize, &Option<CellValue>)> + '_ {
@@ -106,37 +112,28 @@ impl Game {
             .flat_map(|(y, row)| row.iter().enumerate().map(move |(x, n)| (y, x, n)))
     }
 
-    fn iter_row_poss_mut(
-        &mut self,
-        row: usize,
-    ) -> impl Iterator<Item = (usize, &mut [bool; 9])> + '_ {
-        self.possibilities[row].iter_mut().enumerate()
+    fn iter_row_poss(&self, row: usize) -> impl Iterator<Item = (usize, &[bool; 9])> + '_ {
+        self.cell_poss[row].iter().enumerate()
     }
 
-    fn iter_col_poss_mut(
-        &mut self,
-        col: usize,
-    ) -> impl Iterator<Item = (usize, &mut [bool; 9])> + '_ {
-        self.possibilities
-            .iter_mut()
-            .map(move |row| &mut row[col])
-            .enumerate()
+    fn iter_col_poss(&self, col: usize) -> impl Iterator<Item = (usize, &[bool; 9])> + '_ {
+        self.cell_poss.iter().map(move |row| &row[col]).enumerate()
     }
 
-    fn iter_3x3_poss_mut(
-        &mut self,
+    fn iter_3x3_poss(
+        &self,
         row: usize,
         col: usize,
-    ) -> impl Iterator<Item = (usize, usize, &mut [bool; 9])> + '_ {
+    ) -> impl Iterator<Item = (usize, usize, &[bool; 9])> + '_ {
         let r_start = 3 * (row / 3);
         let c_start = 3 * (col / 3);
-        self.possibilities[r_start..r_start + 3]
-            .iter_mut()
+        self.cell_poss[r_start..r_start + 3]
+            .iter()
             .enumerate()
             .map(move |(y, r)| (y + r_start, r))
             .flat_map(move |(y, r)| {
                 r[c_start..c_start + 3]
-                    .iter_mut()
+                    .iter()
                     .enumerate()
                     .map(move |(x, n)| (y, x + c_start, n))
             })
@@ -149,55 +146,51 @@ impl Game {
         self.board[row][col] = Some(cv);
         let mut set = [false; 9];
         set[usize::from(cv)] = true;
-        self.possibilities[row][col] = set;
-        for (_, poss) in self.iter_row_poss_mut(row).filter(|&(c, _)| c != col) {
-            poss[usize::from(cv)] = false;
-        }
-        for (_, poss) in self.iter_col_poss_mut(col).filter(|&(r, _)| r != row) {
-            poss[usize::from(cv)] = false;
-        }
-        for (_, _, poss) in self
-            .iter_3x3_poss_mut(row, col)
-            .filter(|&(r, c, _)| !(r == row && c == col))
-        {
-            poss[usize::from(cv)] = false;
-        }
+        self.cell_poss[row][col] = set;
+        self.cols_flags[col][usize::from(cv)] = true;
+        self.rows_flags[row][usize::from(cv)] = true;
+        let s = self.sqrs_ind(row, col);
+        self.sqrs_flags[s][usize::from(cv)] = true;
+        self.update_poss_from_flags(row, col);
     }
 
     fn unset_cell(&mut self, row: usize, col: usize) {
+        let i = match self.board[row][col] {
+            Some(cv) => usize::from(cv),
+            None => return,
+        };
         self.board[row][col] = None;
-        // Grab what's present for each group - all of these are referenced when setting the new
-        // possibilities for the cells affected by the removal
-        let mut rows = [[false; 9]; 9];
-        let mut cols = [[false; 9]; 9];
-        let mut sqrs = [[false; 9]; 9];
-        for (y, row) in rows.iter_mut().enumerate() {
-            for (x, col) in cols.iter_mut().enumerate() {
-                if let Some(cv) = self.board[y][x] {
-                    let i = usize::from(cv);
-                    let s = 3 * (y / 3) + x / 3;
-                    row[i] = true;
-                    col[i] = true;
-                    sqrs[s][i] = true;
-                }
-            }
-        }
+        self.cols_flags[col][i] = false;
+        self.rows_flags[row][i] = false;
+        let s = self.sqrs_ind(row, col);
+        self.sqrs_flags[s][i] = false;
+        self.update_poss_from_flags(row, col);
+    }
+
+    fn update_poss_from_flags(&mut self, row: usize, col: usize) {
         // Set the new possibilities for the affected row
-        for (x, c) in cols.iter().enumerate() {
+        for (x, c) in self.cols_flags.iter().enumerate() {
             if self.board[row][x].is_none() {
                 let s = 3 * (row / 3) + x / 3;
                 for (i, &c) in c.iter().enumerate() {
-                    self.possibilities[row][x][i] = !(rows[row][i] || c || sqrs[s][i]);
+                    let new = !(self.rows_flags[row][i] || c || self.sqrs_flags[s][i]);
+                    self.cell_poss[row][x][i] = new;
                 }
             }
         }
         // Set the new possibilities for the affected column (less the removed cell, which was fixed
         // by the previous loop)
-        for (y, r) in rows.iter().enumerate().filter(|&(y, _)| y != row) {
+        for (y, r) in self
+            .rows_flags
+            .iter()
+            .enumerate()
+            .filter(|&(y, _)| y != row)
+        {
             if self.board[y][col].is_none() {
                 let s = 3 * (y / 3) + col / 3;
                 for (i, &r) in r.iter().enumerate() {
-                    self.possibilities[y][col][i] = !(r || cols[col][i] || sqrs[s][i]);
+                    let new = !(r || self.cols_flags[col][i] || self.sqrs_flags[s][i]);
+                    self.cell_poss[y][col][i] = new;
                 }
             }
         }
@@ -210,39 +203,75 @@ impl Game {
                 if self.board[y][x].is_none() {
                     let s = 3 * (y / 3) + x / 3;
                     for i in 0..9 {
-                        self.possibilities[y][x][i] = !(rows[y][i] || cols[x][i] || sqrs[s][i]);
+                        let new = !(self.rows_flags[y][i]
+                            || self.cols_flags[x][i]
+                            || self.sqrs_flags[s][i]);
+                        self.cell_poss[y][x][i] = new;
                     }
                 }
             }
         }
     }
 
-    fn propagate_poss_to_board(&mut self) -> bool {
+    pub fn propagate_poss_to_board(&mut self) -> bool {
         // Only try to make changes if the game isn't already solved
         if !self.solved() {
             let mut made_change = false;
+            for cv in 0..9 {
+                if self.rows_flags.iter().filter(|b| b[cv]).count() == 8 {
+                    let r = self.rows_flags.iter().position(|b| !b[cv]).expect("rfr");
+                    // println!("PPTB | R | Row {} only one without {} set", r, cv + 1);
+                    let c = self.iter_row_poss(r).position(|(_, cell)| cell[cv]);
+                    if let Some(c) = c {
+                        // println!("PPTB | R | Cell ({}, {}) determined to be cell to set to {}", r, c, cv + 1);
+                        // println!("PPTB | R | Setting ({}, {}) to {:?}", c, r, CellValue::new(cv as u8 + 1).expect("rfcv"));
+                        self.set_cell(r, c, CellValue::new(cv as u8 + 1).expect("rfcv"));
+                        // println!("PPTB | R | New board state:");
+                        // println!("{}", self);
+                        made_change = true;
+                    }
+                }
+                if self.cols_flags.iter().filter(|b| b[cv]).count() == 8 {
+                    let c = self.cols_flags.iter().position(|b| !b[cv]).expect("cfc");
+                    let r = self.iter_col_poss(c).position(|(_, cell)| cell[cv]);
+                    if let Some(r) = r {
+                        // println!("PPTB | C | Setting ({}, {}) to {:?}", c, r, CellValue::new(cv as u8 + 1).expect("cfcv"));
+                        self.set_cell(r, c, CellValue::new(cv as u8 + 1).expect("cfcv"));
+                        // println!("PPTB | C | New board state:");
+                        // println!("{}", self);
+                        made_change = true;
+                    }
+                }
+                if self.sqrs_flags.iter().filter(|b| b[cv]).count() == 8 {
+                    let s = self.sqrs_flags.iter().position(|b| !b[cv]).expect("sfs");
+                    // println!("PPTB | S | 3x3 {} only one without {} set", s, cv + 1);
+                    let rs = 3 * (s / 3);
+                    let cs = 3 * (s % 3);
+                    // println!("PPTB | S | Finding cell to set in 3x3 w/ TL ({}, {})", cs, rs);
+                    let p = self
+                        .iter_3x3_poss(rs, cs)
+                        .position(|(_, _, cell)| cell[cv]);
+                    if let Some(p) = p {
+                        let ro = p / 3;
+                        let co = p % 3;
+                        let r = rs + ro;
+                        let c = cs + co;
+                        // println!("PPTB | S | Setting ({}, {}) to {:?}", c, r, CellValue::new(cv as u8 + 1).expect("sfcv"));
+                        self.set_cell(r, c, CellValue::new(cv as u8 + 1).expect("sfcv"));
+                        made_change = true;
+                    }
+                }
+            }
             for y in 0..9 {
-                'x: for x in 0..9 {
+                for x in 0..9 {
                     // Only check possibilities if the board has no value in a cell
                     if self.board[y][x].is_none() {
-                        // We set `n` to an invalid cell value to start with. If we encounter a
-                        // value that the cell could be, we set n to that value. But if we encounter
-                        // a second value that the cell could be, then we can't propagate the
-                        // possibility outwards into a definite value. So if that happens, move on
-                        // to the next cell. Otherwise, set this cell's value to the only possible
-                        // one.
-                        let mut n = 0;
-                        for i in 0..9 {
-                            if self.possibilities[y][x][i] {
-                                if n > 0 {
-                                    continue 'x;
-                                } else {
-                                    n = i + 1;
-                                }
-                            }
-                        }
-                        if n > 0 {
-                            self.set_cell(y, x, CellValue::new(n as u8).unwrap());
+                        if self.cell_poss[y][x].iter().copied().filter(|&b| b).count() == 1 {
+                            let cv = self.cell_poss[y][x].iter().position(|&b| b).unwrap();
+                            // println!("PPTB | X | Setting ({}, {}) to {:?}", x, y, CellValue::new(cv as u8 + 1).expect("xcv"));
+                            self.set_cell(y, x, CellValue::new(cv as u8 + 1).expect("xcv"));
+                            // println!("PPTB | X | New board state:");
+                            // println!("{}", self);
                             made_change = true;
                         }
                     }
@@ -258,12 +287,15 @@ impl Game {
         if self.solved() {
             return;
         }
+        // println!("starting propagation");
         // Solve as much of the puzzle as is possible without any sort of foresight - just cancel
         // out possible values and put in values for cells with only one possible value for as long
         // as possible.
-        let mut propagated = self.propagate_poss_to_board();
-        while propagated {
-            propagated = self.propagate_poss_to_board();
+        loop {
+            if !self.propagate_poss_to_board() {
+                break;
+            }
+            // println!("SOLV | Did propagation pass");
         }
         // If this solves the puzzle, hooray! Easy win, just return.
         if self.solved() {
@@ -292,25 +324,31 @@ impl Game {
             .filter(|&(_, &p)| p)
             .map(|(i, _)| CellValue::new(i as u8 + 1).unwrap())
         {
+            let mut new = *self;
             // Set the cell to the possible value
-            self.set_cell(y, x, cv);
+            new.set_cell(y, x, cv);
+            // println!("SOLV | Making starting guess: set ({}, {}) to {:?}", x, y, cv);
             // Make sure that this change is valid (especially that it leaves possibilities).
-            if !self.is_valid(false) {
-                self.unset_cell(y, x);
+            if !new.is_valid(false) {
+                // println!("SOLV | Move caused invalid gamestate - undoing");
+                new.unset_cell(y, x);
                 continue;
             }
             // If that move solved the game, return.
-            if self.solved() {
+            if new.solved() {
+                *self = new;
                 return;
             }
+            // println!("SOLV | Recursing");
             // If it didn't, this becomes the base of a recursive walk over the possible moves for
             // the game with that as the starting point. If this tree produces a solved game (the
             // recursive call returns `true`), then return. Otherwise, undo the move and try the
             // next one.
-            if self.solve_recursive(1, depth_cap) {
+            if new.solve_recursive(1, depth_cap) {
+                *self = new;
                 return;
             } else {
-                self.unset_cell(y, x);
+                // println!("SOLV | Branch failed, try next one");
             }
         }
         panic!("Found no unique solution to game.");
@@ -318,8 +356,22 @@ impl Game {
 
     fn solve_recursive(&mut self, depth: usize, max_depth: usize) -> bool {
         if depth > max_depth {
-            println!("hit depth cap, climbing back up.");
+            // println!("hit depth cap, climbing back up.");
             return false;
+        }
+        // println!("starting propagation");
+        // Solve as much of the puzzle as is possible without any sort of foresight - just cancel
+        // out possible values and put in values for cells with only one possible value for as long
+        // as possible.
+        loop {
+            if !self.propagate_poss_to_board() {
+                break;
+            }
+            // println!("SOLV | Did propagation pass");
+        }
+        // If this solves the puzzle, hooray! Easy win, just return.
+        if self.solved() {
+            return true;
         }
         // Get the coordinates and possibilities for the first cell with more than one possible
         // value. The `unwrap` is safe here since this method never gets called if there are no
@@ -340,18 +392,22 @@ impl Game {
             .filter(|&(_, &p)| p)
             .map(|(i, _)| CellValue::new(i as u8 + 1).unwrap())
         {
-            self.set_cell(y, x, cv);
-            if !self.is_valid(false) {
-                self.unset_cell(y, x);
+            let mut new = *self;
+            new.set_cell(y, x, cv);
+            // println!("SLRC({}) | Making starting guess: set ({}, {}) to {:?}", depth, x, y, cv);
+            if !new.is_valid(false) {
+                new.unset_cell(y, x);
                 continue;
             }
-            if self.solved() {
+            if new.solved() {
                 return true;
             }
-            if self.solve_recursive(depth + 1, max_depth) {
+            // println!("SLRC({}) | Recursing", depth);
+            if new.solve_recursive(depth + 1, max_depth) {
+                *self = new;
                 return true;
             } else {
-                self.unset_cell(y, x);
+                // println!("SLRC({}) | Branch failed, try next one", depth);
             }
         }
         false
@@ -389,7 +445,7 @@ impl Game {
             .find(|&(_, _, cell, poss)| cell.is_none() && !poss.contains(&true))
         {
             if verbose {
-                println!("cell ({}, {}) has no possible values", x, y);
+                println!("Cell ({}, {}) has no possible values", x, y);
             }
             false
         } else {
@@ -404,13 +460,13 @@ impl Game {
                     if rows[y][i] || cols[x][i] || sqrs[s][i] {
                         if verbose {
                             if rows[y][i] {
-                                println!("conflict: row {} has multiple {}s", y, i + 1);
+                                println!("Conflict: row {} has multiple {}s", y, i + 1);
                             }
                             if cols[x][i] {
-                                println!("conflict: col {} has multiple {}s", x, i + 1);
+                                println!("Conflict: col {} has multiple {}s", x, i + 1);
                             }
                             if sqrs[s][i] {
-                                println!("conflict: sqr {} has multiple {}s", s, i + 1);
+                                println!("Conflict: sqr {} has multiple {}s", s, i + 1);
                             }
                         }
                         return false;
@@ -425,7 +481,11 @@ impl Game {
         }
     }
 
-    pub fn cell_char(&self, row: usize, col: usize) -> char {
+    fn sqrs_ind(&self, row: usize, col: usize) -> usize {
+        3 * (row / 3) + col / 3
+    }
+
+    fn cell_char(&self, row: usize, col: usize) -> char {
         match self.board[row][col].map(|n| n as u8) {
             Some(1) => '1',
             Some(2) => '2',
