@@ -14,5 +14,4 @@ fn main() {
     let elapsed = start.elapsed();
     println!("{}", game);
     println!("Time taken: {:?}", elapsed);
-    println!("Size: {}", std::mem::size_of::<Game>());
 }
